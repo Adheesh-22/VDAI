@@ -1,0 +1,10 @@
+services:
+  voiceguard:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./model.onnx:/app/model.onnx:ro
+    env_file:
+      - .env
+    restart: unless-stopped
