@@ -246,12 +246,12 @@ async def websocket_endpoint(websocket: WebSocket):
                         input_tensor = processor.prepare_input(lfcc)
                         output, elapsed = processor.run_inference(input_tensor)
                         influence_duration_seconds.observe(elapsed)
-                        msg = f"Inference ran: prediction={output[0][0]}, time={elapsed * 1000:.2f}ms"
+                        msg = f"Inference ran: prediction={output[0][0][0]}, time={elapsed * 1000:.2f}ms"
                         logging.info(msg)
                         await websocket.send_text(json.dumps({
                             "status": "detection",
-                            "prediction": float(output[0][0]),
-                            "confidence": float(output[0][1]),
+                            "prediction": float(output[0][0][0]),
+                            "confidence": float(output[0][0][1]),
                             "lfcc_shape": list(lfcc.shape),
                             "lfcc_data": lfcc.tolist(),
                             "buffer_size": BUFFER_SIZE,

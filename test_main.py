@@ -127,7 +127,8 @@ class TestProcessChunk:
 
     def test_multiple_chunks_fill_buffer(self, processor):
         chunk = np.ones(CHUNK_SAMPLES, dtype=np.float32).tobytes()
-        fills_needed = BUFFER_SIZE // CHUNK_SAMPLES
+        import math
+        fills_needed = math.ceil(BUFFER_SIZE / CHUNK_SAMPLES)
         for _ in range(fills_needed):
             processor.process_chunk(chunk)
         assert processor.count_nonzero() == BUFFER_SIZE

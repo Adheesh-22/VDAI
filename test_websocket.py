@@ -68,6 +68,14 @@ def client():
             yield c
 
 
+from contextlib import contextmanager
+
+@contextmanager
+def connect_ws(client):
+    with client.websocket_connect("/ws") as ws:
+        ws.receive_json() # discard 'connected' message
+        yield ws
+
 def send_n_chunks(ws, n, value=1.0):
     responses = []
     for _ in range(n):
@@ -78,25 +86,25 @@ def send_n_chunks(ws, n, value=1.0):
 
 class TestWebSocketConnection:
     def test_connection_accepted_returns_data(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             ws.send_bytes(make_chunk())
             data = ws.receive_json()
             assert data is not None
 
     def test_first_chunk_returns_buffering(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             ws.send_bytes(make_chunk())
             data = ws.receive_json()
             assert data["status"] == "buffering"
 
     def test_buffering_has_samples_key(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             ws.send_bytes(make_chunk())
             data = ws.receive_json()
             assert "samples" in data
 
     def test_samples_count_increases(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             ws.send_bytes(make_chunk())
             d1 = ws.receive_json()
             ws.send_bytes(make_chunk())
@@ -106,17 +114,17 @@ class TestWebSocketConnection:
 
 class TestBufferingProgression:
     def test_five_chunks_still_buffering(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             responses = send_n_chunks(ws, 5)
             assert all(r["status"] == "buffering" for r in responses)
 
     def test_six_chunks_exits_buffering(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             responses = send_n_chunks(ws, CHUNKS_TO_FILL)
             assert responses[-1]["status"] != "buffering"
 
     def test_samples_never_exceeds_buffer_size(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             for _ in range(4):
                 ws.send_bytes(make_chunk())
                 data = ws.receive_json()
@@ -125,22 +133,22 @@ class TestBufferingProgression:
 
 class TestReadyState:
     def test_ready_status_after_buffer_fills(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             responses = send_n_chunks(ws, CHUNKS_TO_FILL)
             assert responses[-1]["status"] == "ready"
 
     def test_ready_response_has_next_inference_in(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             responses = send_n_chunks(ws, CHUNKS_TO_FILL)
             assert "next_inference_in" in responses[-1]
 
     def test_next_inference_in_starts_at_three(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             responses = send_n_chunks(ws, CHUNKS_TO_FILL)
             assert responses[-1]["next_inference_in"] == INFERENCE_INTERVAL - 1
 
     def test_next_inference_in_counts_down(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             send_n_chunks(ws, CHUNKS_TO_FILL)
             ws.send_bytes(make_chunk())
             d1 = ws.receive_json()
@@ -151,32 +159,32 @@ class TestReadyState:
 
 class TestInferenceTrigger:
     def test_detection_fires_after_interval(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             responses = send_n_chunks(ws, CHUNKS_TO_DETECT)
             assert responses[-1]["status"] == "detection"
 
     def test_detection_has_prediction_key(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             responses = send_n_chunks(ws, CHUNKS_TO_DETECT)
             assert "prediction" in responses[-1]
 
     def test_detection_has_confidence_key(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             responses = send_n_chunks(ws, CHUNKS_TO_DETECT)
             assert "confidence" in responses[-1]
 
     def test_prediction_is_float(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             responses = send_n_chunks(ws, CHUNKS_TO_DETECT)
             assert isinstance(responses[-1]["prediction"], float)
 
     def test_confidence_is_float(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             responses = send_n_chunks(ws, CHUNKS_TO_DETECT)
             assert isinstance(responses[-1]["confidence"], float)
 
     def test_detection_repeats_every_interval(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             send_n_chunks(ws, CHUNKS_TO_DETECT)
             send_n_chunks(ws, INFERENCE_INTERVAL - 1)
             ws.send_bytes(make_chunk())
@@ -186,19 +194,19 @@ class TestInferenceTrigger:
 
 class TestErrorHandling:
     def test_invalid_chunk_returns_error_status(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             ws.send_bytes(make_invalid_chunk())
             data = ws.receive_json()
             assert data["status"] == "error"
 
     def test_invalid_chunk_response_has_message(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             ws.send_bytes(make_invalid_chunk())
             data = ws.receive_json()
             assert "message" in data
 
     def test_connection_stays_open_after_error(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             ws.send_bytes(make_invalid_chunk())
             ws.receive_json()
             ws.send_bytes(make_chunk())
@@ -206,7 +214,7 @@ class TestErrorHandling:
             assert data["status"] == "buffering"
 
     def test_buffer_resets_after_invalid_chunk(self, client):
-        with client.websocket_connect("/ws") as ws:
+        with connect_ws(client) as ws:
             send_n_chunks(ws, 3)
             ws.send_bytes(make_invalid_chunk())
             ws.receive_json()
@@ -217,18 +225,24 @@ class TestErrorHandling:
 
 
 class TestModelNotLoaded:
-    def test_error_status_when_model_missing(self):
+    def test_connected_status_when_model_missing(self):
         with patch("onnxruntime.InferenceSession", side_effect=Exception("not found")):
             from main import app
             with TestClient(app) as c:
                 with c.websocket_connect("/ws") as ws:
                     data = ws.receive_json()
-                    assert data["status"] == "error"
+                    assert data["status"] == "connected"
+                    assert data["model_available"] is False
 
-    def test_error_message_when_model_missing(self):
+    def test_features_ready_status_when_model_missing(self):
         with patch("onnxruntime.InferenceSession", side_effect=Exception("not found")):
             from main import app
             with TestClient(app) as c:
                 with c.websocket_connect("/ws") as ws:
-                    data = ws.receive_json()
-                    assert data["message"] == "Model not loaded"
+                    ws.receive_json()
+                    ws.send_bytes(make_chunk())
+                    # Actually we need to send 6 chunks to fill buffer and interval
+                    # Let's just mock it with send_n_chunks
+                    responses = send_n_chunks(ws, CHUNKS_TO_DETECT)
+                    assert responses[-1]["status"] == "features_ready"
+                    assert responses[-1]["model_available"] is False
