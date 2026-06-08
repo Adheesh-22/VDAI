@@ -2,6 +2,37 @@ import pytest
 import numpy as np
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
+import sys
+import os
+
+CHUNK_SAMPLES = 4096
+BUFFER_SIZE = 24000
+
+# Ensure model exists before running tests
+if not os.path.exists('model.onnx'):
+    import onnx
+    from onnx import helper, TensorProto
+    
+    input_tensor = helper.make_tensor_value_info(
+        'input', TensorProto.FLOAT, [1, 1, 60, None]
+    )
+    output_tensor = helper.make_tensor_value_info(
+        'output', TensorProto.FLOAT, [1, 2]
+    )
+    
+    pool = helper.make_node('GlobalAveragePool', inputs=['input'], outputs=['pooled'])
+    flatten = helper.make_node('Flatten', inputs=['pooled'], outputs=['flat'], axis=1)
+    
+    weight = helper.make_tensor('W', TensorProto.FLOAT, [2, 60], [0.1] * 120)
+    bias = helper.make_tensor('b', TensorProto.FLOAT, [2], [0.0, 0.0])
+    gemm = helper.make_node('Gemm', inputs=['flat', 'W', 'b'], outputs=['output'])
+    
+    graph = helper.make_graph(
+        [pool, flatten, gemm], 'dummy', [input_tensor], [output_tensor],
+        initializer=[weight, bias]
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid('', 17)])
+    onnx.save(model, 'model.onnx')
 
 
 CHUNK_SAMPLES = 4096

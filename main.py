@@ -10,11 +10,12 @@ from scipy.fftpack import dct
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import (
+    Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+)
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-
 MODEL_PATH = os.getenv("MODEL_PATH", "model.onnx")
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
@@ -97,7 +98,9 @@ class AudioProcessor:
         if len(raw_bytes) == 0:
             return False, "Received empty chunk"
         if len(raw_bytes) % 4 != 0:
-            return False, f"Invalid byte length {len(raw_bytes)}: must be a multiple of 4 (float32)"
+            msg = f"Invalid byte length {len(raw_bytes)}: "
+            msg += "not aligned to float32 (multiple of 4 required)"
+            return False, msg
         return True, None
 
     def process_chunk(self, raw_bytes: bytes):
@@ -243,7 +246,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         input_tensor = processor.prepare_input(lfcc)
                         output, elapsed = processor.run_inference(input_tensor)
                         influence_duration_seconds.observe(elapsed)
-                        logging.info(f"Inference: prediction={output[0][0]:.4f} time={elapsed*1000:.1f}ms")
+                        msg = f"Inference ran: prediction={output[0][0]}, time={elapsed * 1000:.2f}ms"
+                        logging.info(msg)
                         await websocket.send_text(json.dumps({
                             "status": "detection",
                             "prediction": float(output[0][0]),

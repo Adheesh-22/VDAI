@@ -1,6 +1,6 @@
 [flake8]
 max-line-length = 120
-extend-ignore = E203, W503
+extend-ignore = E203, W503, E501
 exclude =
     .git,
     __pycache__,
@@ -8,7 +8,9 @@ exclude =
     .env,
     *.egg-info,
     venv,
-    .venv
+    .venv,
+    voiceguard-frontend
 per-file-ignores =
-    test_main.py: E501
-    test_websocket.py: E501
+    test_main.py: F401, E501
+    test_websocket.py: F401, E501
+    benchmark.py: E501
