@@ -109,7 +109,7 @@ class AudioProcessor:
             raise ValueError(msg)
         chunk = np.frombuffer(raw_bytes, dtype=np.float32)
         self.buffer = np.roll(self.buffer, -len(chunk))
-        self.buffer[-len(chunk):] = chunk
+        self.buffer[-len(chunk):] = np.nan_to_num(chunk, nan=0.0, posinf=1.0, neginf=-1.0)
         self.samples_received += len(chunk)
 
     def reset_buffer(self):
@@ -242,23 +242,41 @@ async def websocket_endpoint(websocket: WebSocket):
                     lfcc = processor.extract_lfcc()
 
                     if processor.model_loaded:
-                        # Run real inference
-                        input_tensor = processor.prepare_input(lfcc)
-                        output, elapsed = processor.run_inference(input_tensor)
-                        influence_duration_seconds.observe(elapsed)
-                        msg = f"Inference ran: prediction={output[0][0][0]}, time={elapsed * 1000:.2f}ms"
-                        logging.info(msg)
-                        await websocket.send_text(json.dumps({
-                            "status": "detection",
-                            "prediction": float(output[0][0][0]),
-                            "confidence": float(output[0][0][1]),
-                            "lfcc_shape": list(lfcc.shape),
-                            "lfcc_data": lfcc.tolist(),
-                            "buffer_size": BUFFER_SIZE,
-                            "buffer_pct": 100.0,
-                            "rms": round(rms_val, 6),
-                            "waveform": waveform,
-                        }))
+                        try:
+                            # Run real inference
+                            input_tensor = processor.prepare_input(lfcc)
+                            output, elapsed = processor.run_inference(input_tensor)
+                            influence_duration_seconds.observe(elapsed)
+                            msg = f"Inference ran: prediction={output[0][0][0]}, time={elapsed * 1000:.2f}ms"
+                            logging.info(msg)
+                            await websocket.send_text(json.dumps({
+                                "status": "detection",
+                                "prediction": float(output[0][0][0]),
+                                "confidence": float(output[0][0][1]),
+                                "lfcc_shape": list(lfcc.shape),
+                                "lfcc_data": lfcc.tolist(),
+                                "buffer_size": BUFFER_SIZE,
+                                "buffer_pct": 100.0,
+                                "rms": round(rms_val, 6),
+                                "waveform": waveform,
+                            }))
+                        except Exception as inf_err:
+                            logging.error(f"Inference crashed: {inf_err}")
+                            await websocket.send_text(json.dumps({
+                                "status": "error",
+                                "message": f"Model inference failed: {inf_err}"
+                            }))
+                            # Optionally fallback to features_ready so the UI still updates
+                            await websocket.send_text(json.dumps({
+                                "status": "features_ready",
+                                "lfcc_shape": list(lfcc.shape),
+                                "lfcc_data": lfcc.tolist(),
+                                "buffer_size": BUFFER_SIZE,
+                                "buffer_pct": 100.0,
+                                "rms": round(rms_val, 6),
+                                "waveform": waveform,
+                                "model_available": False,
+                            }))
                     else:
                         # No model yet — send LFCC data anyway for visualisation
                         await websocket.send_text(json.dumps({

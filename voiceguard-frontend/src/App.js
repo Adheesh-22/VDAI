@@ -179,7 +179,7 @@ export default function App() {
         for (let i = 0; i < raw.length; i++) sum += raw[i] ** 2;
         setMicVolume(Math.min(1, Math.sqrt(sum / raw.length) * 8));
         if (!pausedRef.current) {
-          sendAudio(raw.buffer.slice(0));
+          sendAudio(bufferAudio.current.buffer.slice(0));
           chunkCountRef.current++;
           setChunkCount(chunkCountRef.current);
         }
